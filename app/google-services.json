@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "721954771351",
+    "project_id": "narrativeos-511913",
+    "storage_bucket": "narrativeos-511913.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:721954771351:android:6ee75320f70e63048934d2",
+        "android_client_info": {
+          "package_name": "com.narrativeos"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "721954771351-30uka1onov21vtjgi22d285lcvufb820.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.narrativeos",
+            "certificate_hash": "3ceddb499f2cd0e24f43b35a89e74304eed03d41"
+          }
+        },
+        {
+          "client_id": "721954771351-li0i456gaoc0qra31rdse56aa6eoc5j9.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDqUa4uvlu8eeEdjQ9eoiBnfA0kZpy_Yso"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "721954771351-li0i456gaoc0qra31rdse56aa6eoc5j9.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -104,10 +104,16 @@ private fun NarrativeHome(onStartBubble: () -> Unit) {
         mutableStateOf(preferences.getString("client_token", "") ?: "")
     }
     var firebaseWebApiKey by remember {
-        mutableStateOf(preferences.getString("firebase_web_api_key", "") ?: "")
+        mutableStateOf(
+            preferences.getString("firebase_web_api_key", context.getString(R.string.google_api_key))
+                ?: context.getString(R.string.google_api_key),
+        )
     }
     var googleWebClientId by remember {
-        mutableStateOf(preferences.getString("google_web_client_id", "") ?: "")
+        mutableStateOf(
+            preferences.getString("google_web_client_id", context.getString(R.string.default_web_client_id))
+                ?: context.getString(R.string.default_web_client_id),
+        )
     }
     var firebaseSession by remember { mutableStateOf<FirebaseSession?>(null) }
     var authEmail by remember { mutableStateOf("") }
