@@ -1,0 +1,10 @@
+.git
+.gradle
+.idea
+.venv
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/build
+local.properties
+*.iml

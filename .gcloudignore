@@ -1,0 +1,15 @@
+.gcloudignore
+.git
+.gitignore
+.venv/
+**/.venv/
+**/__pycache__/
+**/.pytest_cache/
+**/build/
+.gradle/
+app/
+gradle/
+gradlew
+gradlew.bat
+local.properties
+PRD.md

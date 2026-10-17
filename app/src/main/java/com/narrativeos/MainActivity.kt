@@ -24,6 +24,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -43,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -93,10 +95,69 @@ private fun NarrativeHome(onStartBubble: () -> Unit) {
     var backendUrl by remember {
         mutableStateOf(preferences.getString("backend_url", BuildConfig.BACKEND_URL) ?: BuildConfig.BACKEND_URL)
     }
+    var clientToken by remember {
+        mutableStateOf(preferences.getString("client_token", "") ?: "")
+    }
+    var firebaseWebApiKey by remember {
+        mutableStateOf(preferences.getString("firebase_web_api_key", "") ?: "")
+    }
+    var firebaseSession by remember { mutableStateOf<FirebaseSession?>(null) }
+    var authEmail by remember { mutableStateOf("") }
+    var authPassword by remember { mutableStateOf("") }
+    var authMessage by remember { mutableStateOf<String?>(null) }
+    var isAuthenticating by remember { mutableStateOf(false) }
+    var history by remember { mutableStateOf<List<AnalysisReport>>(emptyList()) }
+    var showHistory by remember { mutableStateOf(false) }
+    var isLoadingHistory by remember { mutableStateOf(false) }
+    var historyMessage by remember { mutableStateOf<String?>(null) }
     var showBackendSettings by remember { mutableStateOf(false) }
     var isAnalyzing by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var report by remember { mutableStateOf<AnalysisReport?>(null) }
+
+    fun authenticate(createAccount: Boolean) {
+        if (firebaseWebApiKey.isBlank() || authEmail.isBlank() || authPassword.isBlank()) {
+            authMessage = "Enter the Firebase Web API key, email, and password."
+            return
+        }
+        isAuthenticating = true
+        authMessage = null
+        coroutineScope.launch {
+            try {
+                firebaseSession = FirebaseAuthClient.authenticate(
+                    firebaseWebApiKey,
+                    authEmail,
+                    authPassword,
+                    createAccount,
+                )
+                authPassword = ""
+                authMessage = "Signed in. Reports will be saved to your Firestore history."
+            } catch (error: Exception) {
+                authMessage = error.message ?: "Firebase sign-in failed."
+            } finally {
+                isAuthenticating = false
+            }
+        }
+    }
+
+    fun loadHistory() {
+        val currentSession = firebaseSession ?: return
+        if (isLoadingHistory) return
+        isLoadingHistory = true
+        historyMessage = null
+        coroutineScope.launch {
+            try {
+                val activeSession = FirebaseAuthClient.refreshIfNeeded(firebaseWebApiKey, currentSession)
+                firebaseSession = activeSession
+                history = AnalysisApiClient.loadHistory(backendUrl, clientToken, activeSession.idToken)
+                showHistory = true
+            } catch (error: Exception) {
+                historyMessage = error.message ?: "Could not load Firestore history."
+            } finally {
+                isLoadingHistory = false
+            }
+        }
+    }
 
     Surface(modifier = Modifier.fillMaxSize(), color = Canvas) {
         Column(
@@ -129,6 +190,45 @@ private fun NarrativeHome(onStartBubble: () -> Unit) {
                 }
             }
 
+            if (showBackendSettings) {
+                OutlinedTextField(
+                    value = backendUrl,
+                    onValueChange = {
+                        backendUrl = it
+                        preferences.edit().putString("backend_url", it).apply()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Backend URL") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    shape = RoundedCornerShape(8.dp),
+                )
+                OutlinedTextField(
+                    value = firebaseWebApiKey,
+                    onValueChange = {
+                        firebaseWebApiKey = it
+                        preferences.edit().putString("firebase_web_api_key", it).apply()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Firebase Web API key") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(8.dp),
+                )
+                OutlinedTextField(
+                    value = clientToken,
+                    onValueChange = {
+                        clientToken = it
+                        preferences.edit().putString("client_token", it).apply()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("API access token") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    shape = RoundedCornerShape(8.dp),
+                )
+            }
+
             Spacer(modifier = Modifier.height(22.dp))
             Text(
                 text = "Pause the scroll.\nCheck the claim.",
@@ -143,6 +243,69 @@ private fun NarrativeHome(onStartBubble: () -> Unit) {
                 fontSize = 16.sp,
                 lineHeight = 24.sp,
             )
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.White, RoundedCornerShape(12.dp))
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                val currentSession = firebaseSession
+                if (currentSession == null) {
+                    Text("Firebase account", color = Ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                    OutlinedTextField(
+                        value = authEmail,
+                        onValueChange = { authEmail = it; authMessage = null },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Email") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                        shape = RoundedCornerShape(8.dp),
+                    )
+                    OutlinedTextField(
+                        value = authPassword,
+                        onValueChange = { authPassword = it; authMessage = null },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Password") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        shape = RoundedCornerShape(8.dp),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(
+                            onClick = { authenticate(createAccount = false) },
+                            enabled = !isAuthenticating,
+                            colors = ButtonDefaults.buttonColors(containerColor = Leaf),
+                        ) {
+                            Text(if (isAuthenticating) "Please wait" else "Sign in")
+                        }
+                        OutlinedButton(
+                            onClick = { authenticate(createAccount = true) },
+                            enabled = !isAuthenticating,
+                        ) {
+                            Text("Create account")
+                        }
+                    }
+                } else {
+                    Text("Signed in as ${currentSession.email}", color = Ink, fontWeight = FontWeight.SemiBold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { loadHistory() }) {
+                            Text(if (isLoadingHistory) "Loading" else "History", color = Leaf)
+                        }
+                        TextButton(onClick = {
+                            firebaseSession = null
+                            history = emptyList()
+                            showHistory = false
+                            authMessage = null
+                        }) {
+                            Text("Sign out", color = Leaf)
+                        }
+                    }
+                }
+                authMessage?.let { Text(it, color = Muted, fontSize = 13.sp, lineHeight = 18.sp) }
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
             Column(
@@ -200,12 +363,33 @@ private fun NarrativeHome(onStartBubble: () -> Unit) {
                             message = "Enter a public post URL or text to analyze."
                             return@Button
                         }
+                        val currentSession = firebaseSession
+                        if (currentSession == null) {
+                            message = "Sign in with Firebase before analyzing content."
+                            return@Button
+                        }
                         isAnalyzing = true
                         report = null
                         message = null
                         coroutineScope.launch {
                             try {
-                                report = AnalysisApiClient.analyze(backendUrl, inputType, content.trim())
+                                val activeSession = FirebaseAuthClient.refreshIfNeeded(
+                                    firebaseWebApiKey,
+                                    currentSession,
+                                )
+                                firebaseSession = activeSession
+                                report = AnalysisApiClient.analyze(
+                                    backendUrl,
+                                    inputType,
+                                    content.trim(),
+                                    clientToken,
+                                    activeSession.idToken,
+                                )
+                                history = AnalysisApiClient.loadHistory(
+                                    backendUrl,
+                                    clientToken,
+                                    activeSession.idToken,
+                                )
                             } catch (error: Exception) {
                                 message = error.message ?: "Could not reach the analysis service."
                             } finally {
@@ -216,7 +400,7 @@ private fun NarrativeHome(onStartBubble: () -> Unit) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(52.dp),
-                    enabled = !isAnalyzing,
+                    enabled = !isAnalyzing && firebaseSession != null,
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Leaf),
                 ) {
@@ -232,6 +416,51 @@ private fun NarrativeHome(onStartBubble: () -> Unit) {
             }
 
             report?.let { analysis -> AnalysisResult(report = analysis) }
+
+            if (showHistory) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.White, RoundedCornerShape(12.dp))
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text("Saved reports", color = Ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                    if (history.isEmpty()) Text("No saved reports yet.", color = Muted, fontSize = 14.sp)
+                    history.forEach { item ->
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(item.createdAt ?: "Saved report", color = Muted, fontSize = 12.sp)
+                            Text(item.overview, color = Ink, fontSize = 14.sp, lineHeight = 20.sp)
+                            TextButton(onClick = {
+                                val activeSession = firebaseSession ?: return@TextButton
+                                val analysisId = item.analysisId ?: return@TextButton
+                                coroutineScope.launch {
+                                    try {
+                                        val refreshedSession = FirebaseAuthClient.refreshIfNeeded(
+                                            firebaseWebApiKey,
+                                            activeSession,
+                                        )
+                                        firebaseSession = refreshedSession
+                                        AnalysisApiClient.deleteHistoryItem(
+                                            backendUrl,
+                                            analysisId,
+                                            clientToken,
+                                            refreshedSession.idToken,
+                                        )
+                                        history = history.filterNot { it.analysisId == analysisId }
+                                        historyMessage = null
+                                    } catch (error: Exception) {
+                                        historyMessage = error.message ?: "Could not delete this report."
+                                    }
+                                }
+                            }) {
+                                Text("Delete report", color = Leaf)
+                            }
+                        }
+                    }
+                    historyMessage?.let { Text(it, color = Muted, fontSize = 13.sp) }
+                }
+            }
 
             Text(
                 text = "NarrativeOS shows what sources support, what they challenge, and where evidence runs out.",
@@ -264,6 +493,9 @@ private fun AnalysisResult(report: AnalysisReport) {
             fontWeight = FontWeight.SemiBold,
         )
         Text(report.overview, color = Ink, fontSize = 14.sp, lineHeight = 20.sp)
+        if (report.analysisId != null) {
+            Text("Saved to your Firestore history", color = Leaf, fontSize = 12.sp)
+        }
         report.claims.forEach { claim ->
             Text(claim.originalClaim, color = Ink, fontWeight = FontWeight.SemiBold)
             Text("${claim.verdict.replace('_', ' ')} · ${claim.category.replace('_', ' ')}", color = Leaf)
@@ -277,17 +509,4 @@ private fun AnalysisResult(report: AnalysisReport) {
             Text(limitation, color = Muted, fontSize = 13.sp, lineHeight = 18.sp)
         }
     }
-}
-private fun validatePostUrl(value: String): String {
-    val uri = runCatching { Uri.parse(value.trim()) }.getOrNull()
-        ?: return "Enter a valid Instagram or X post URL."
-    val host = uri.host?.lowercase()?.removePrefix("www.")
-    val supportedHost = host in setOf("instagram.com", "x.com", "twitter.com")
-    if (uri.scheme !in setOf("https", "http") || !supportedHost) {
-        return "Use a public Instagram or X URL. Other platforms are not supported yet."
-    }
-    if (uri.path.isNullOrBlank() || uri.path == "/") {
-        return "That looks like a platform homepage, not a post."
-    }
-    return "URL accepted. Evidence analysis will be enabled when the backend is connected."
 }

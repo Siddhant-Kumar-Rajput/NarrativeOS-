@@ -28,6 +28,8 @@ data class AnalysisReport(
     val overview: String,
     val claims: List<ClaimFinding>,
     val limitations: List<String>,
+    val analysisId: String? = null,
+    val createdAt: String? = null,
 )
 
 object AnalysisApiClient {
@@ -35,39 +37,94 @@ object AnalysisApiClient {
         backendUrl: String,
         inputType: String,
         content: String,
+        clientToken: String,
+        firebaseIdToken: String,
     ): AnalysisReport = withContext(Dispatchers.IO) {
-        val endpoint = backendUrl.trimEnd('/') + "/api/v1/analyze"
-        val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
+        val body = JSONObject().put("input_type", inputType).put("content", content)
+        parseReport(
+            JSONObject(
+                execute(
+                    backendUrl = backendUrl,
+                    path = "/api/v1/analyze",
+                    method = "POST",
+                    clientToken = clientToken,
+                    firebaseIdToken = firebaseIdToken,
+                    body = body.toString(),
+                ),
+            ),
+        )
+    }
+
+    suspend fun loadHistory(
+        backendUrl: String,
+        clientToken: String,
+        firebaseIdToken: String,
+    ): List<AnalysisReport> = withContext(Dispatchers.IO) {
+        val response = JSONArray(
+            execute(
+                backendUrl = backendUrl,
+                path = "/api/v1/history",
+                method = "GET",
+                clientToken = clientToken,
+                firebaseIdToken = firebaseIdToken,
+            ),
+        )
+        buildList {
+            for (index in 0 until response.length()) {
+                response.optJSONObject(index)?.let { add(parseReport(it)) }
+            }
+        }
+    }
+
+    suspend fun deleteHistoryItem(
+        backendUrl: String,
+        analysisId: String,
+        clientToken: String,
+        firebaseIdToken: String,
+    ) = withContext(Dispatchers.IO) {
+        val encodedId = java.net.URLEncoder.encode(analysisId, Charsets.UTF_8.name())
+        execute(
+            backendUrl = backendUrl,
+            path = "/api/v1/history/$encodedId",
+            method = "DELETE",
+            clientToken = clientToken,
+            firebaseIdToken = firebaseIdToken,
+        )
+    }
+
+    private fun execute(
+        backendUrl: String,
+        path: String,
+        method: String,
+        clientToken: String,
+        firebaseIdToken: String,
+        body: String? = null,
+    ): String {
+        val connection = (URL(backendUrl.trimEnd('/') + path).openConnection() as HttpURLConnection).apply {
+            requestMethod = method
             connectTimeout = 10_000
             readTimeout = 90_000
-            doOutput = true
-            setRequestProperty("Content-Type", "application/json; charset=utf-8")
             setRequestProperty("Accept", "application/json")
+            if (clientToken.isNotBlank()) setRequestProperty("X-NarrativeOS-Token", clientToken)
+            if (firebaseIdToken.isNotBlank()) setRequestProperty("Authorization", "Bearer $firebaseIdToken")
+            if (body != null) {
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            }
         }
 
         try {
-            val request = JSONObject()
-                .put("input_type", inputType)
-                .put("content", content)
-            connection.outputStream.use { stream ->
-                stream.write(request.toString().toByteArray(Charsets.UTF_8))
+            body?.let { requestBody ->
+                connection.outputStream.use { it.write(requestBody.toByteArray(Charsets.UTF_8)) }
             }
-
             val statusCode = connection.responseCode
-            val responseStream = if (statusCode in 200..299) {
-                connection.inputStream
-            } else {
-                connection.errorStream
-            }
+            val responseStream = if (statusCode in 200..299) connection.inputStream else connection.errorStream
             val responseText = responseStream?.bufferedReader()?.use { it.readText() }.orEmpty()
             if (statusCode !in 200..299) {
-                val detail = runCatching {
-                    JSONObject(responseText).optString("detail")
-                }.getOrNull().orEmpty()
+                val detail = runCatching { JSONObject(responseText).optString("detail") }.getOrNull().orEmpty()
                 throw IOException(detail.ifBlank { "Analysis service returned HTTP $statusCode." })
             }
-            parseReport(JSONObject(responseText))
+            return responseText
         } finally {
             connection.disconnect()
         }
@@ -114,6 +171,8 @@ object AnalysisApiClient {
             overview = json.optString("overview"),
             claims = claims,
             limitations = limitations,
+            analysisId = json.optString("analysis_id").takeIf(String::isNotBlank),
+            createdAt = json.optString("created_at").takeIf(String::isNotBlank),
         )
     }
 }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from enum import Enum
 from urllib.parse import urlsplit
 
@@ -89,6 +90,8 @@ class ClaimFinding(BaseModel):
 
 
 class AnalysisReport(BaseModel):
+    analysis_id: str | None = None
+    created_at: datetime | None = None
     input_type: InputType
     retrieval_status: str
     overview: str
