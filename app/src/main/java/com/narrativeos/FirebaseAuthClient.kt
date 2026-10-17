@@ -42,6 +42,29 @@ object FirebaseAuthClient {
         )
     }
 
+    suspend fun authenticateWithGoogle(
+        webApiKey: String,
+        googleIdToken: String,
+    ): FirebaseSession = withContext(Dispatchers.IO) {
+        require(webApiKey.isNotBlank()) { "Set the Firebase Web API key in Server settings first." }
+        val url = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=${encode(webApiKey)}"
+        val response = requestJson(
+            url = url,
+            body = JSONObject()
+                .put("postBody", "id_token=${encode(googleIdToken)}&providerId=google.com")
+                .put("requestUri", "http://localhost")
+                .put("returnIdpCredential", true)
+                .put("returnSecureToken", true),
+        )
+        FirebaseSession(
+            idToken = response.getString("idToken"),
+            refreshToken = response.getString("refreshToken"),
+            email = response.optString("email"),
+            userId = response.getString("localId"),
+            expiresAtEpochSeconds = currentEpochSeconds() + response.optString("expiresIn", "3600").toLong(),
+        )
+    }
+
     suspend fun refreshIfNeeded(webApiKey: String, session: FirebaseSession): FirebaseSession {
         if (session.expiresAtEpochSeconds - currentEpochSeconds() > 60) return session
         return withContext(Dispatchers.IO) {

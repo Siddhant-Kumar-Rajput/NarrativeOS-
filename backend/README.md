@@ -39,7 +39,9 @@ Use the same Google Cloud project for Firebase and Cloud Run. In Firebase Consol
 3. Create a **Cloud Firestore Standard** database in `asia-south1` and start in production mode.
 4. Grant the Cloud Run runtime service account the **Cloud Datastore User** role so the Admin SDK can write report summaries.
 
-In the Android app's **Server** settings, set the backend URL, app access token, and Firebase Web API key. The Web API key is public client configuration, not a service-account key; restrict it to the Identity Toolkit API in Google Cloud. Firebase ID and refresh tokens stay in app memory and are cleared when the app process exits, so users sign in again after restarting the app.
+Register the Android Firebase app with package name `com.narrativeos` (the current `applicationId`). Add the debug SHA-1 fingerprint `3CEDDB499F2CD0E24F43B35A89E74304EED03D41` in Firebase Project Settings, confirm Google is enabled under Authentication providers, then download the updated config. The attached `google-services.json` was generated for `com.narrativeos.com`, so it does not match this app and must not be used as-is. Copy the Web application OAuth client ID from the corrected config into **Server > Google Web OAuth client ID**.
+
+In the Android app's **Server** settings, set the backend URL, app access token, Firebase Web API key, and Google Web OAuth client ID. The Firebase Web API key and OAuth client ID are public client configuration, not service-account secrets; restrict the API key to the Identity Toolkit API in Google Cloud. Firebase ID and refresh tokens stay in app memory and are cleared when the app process exits, so users sign in again after restarting the app.
 
 Firestore stores reports at `users/{firebase_uid}/analyses/{analysis_id}`. Documents include claims, verdicts, citations, limitations, and timestamps, but never the original pasted text. Users can list and delete their own reports. The backend uses Firebase Admin with Cloud Run Application Default Credentials; do not download or commit a service-account JSON key.
 

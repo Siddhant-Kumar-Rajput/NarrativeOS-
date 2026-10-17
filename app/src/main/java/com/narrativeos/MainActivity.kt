@@ -32,6 +32,9 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialRequest
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,6 +51,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import kotlinx.coroutines.launch
 
 private val Ink = Color(0xFF172522)
@@ -101,6 +106,9 @@ private fun NarrativeHome(onStartBubble: () -> Unit) {
     var firebaseWebApiKey by remember {
         mutableStateOf(preferences.getString("firebase_web_api_key", "") ?: "")
     }
+    var googleWebClientId by remember {
+        mutableStateOf(preferences.getString("google_web_client_id", "") ?: "")
+    }
     var firebaseSession by remember { mutableStateOf<FirebaseSession?>(null) }
     var authEmail by remember { mutableStateOf("") }
     var authPassword by remember { mutableStateOf("") }
@@ -114,6 +122,7 @@ private fun NarrativeHome(onStartBubble: () -> Unit) {
     var isAnalyzing by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var report by remember { mutableStateOf<AnalysisReport?>(null) }
+    val credentialManager = remember(context) { CredentialManager.create(context) }
 
     fun authenticate(createAccount: Boolean) {
         if (firebaseWebApiKey.isBlank() || authEmail.isBlank() || authPassword.isBlank()) {
@@ -134,6 +143,41 @@ private fun NarrativeHome(onStartBubble: () -> Unit) {
                 authMessage = "Signed in. Reports will be saved to your Firestore history."
             } catch (error: Exception) {
                 authMessage = error.message ?: "Firebase sign-in failed."
+            } finally {
+                isAuthenticating = false
+            }
+        }
+    }
+
+    fun authenticateWithGoogle() {
+        if (firebaseWebApiKey.isBlank() || googleWebClientId.isBlank()) {
+            authMessage = "Set the Firebase Web API key and Web OAuth client ID in Server settings."
+            return
+        }
+        isAuthenticating = true
+        authMessage = null
+        coroutineScope.launch {
+            try {
+                val googleIdOption = GetGoogleIdOption.Builder()
+                    .setServerClientId(googleWebClientId)
+                    .setFilterByAuthorizedAccounts(false)
+                    .setAutoSelectEnabled(false)
+                    .build()
+                val request = GetCredentialRequest.Builder()
+                    .addCredentialOption(googleIdOption)
+                    .build()
+                val result = credentialManager.getCredential(context, request)
+                val credential = result.credential
+                if (credential !is CustomCredential ||
+                    credential.type != GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+                ) {
+                    throw IllegalStateException("Google did not return an ID token credential.")
+                }
+                val googleIdToken = GoogleIdTokenCredential.createFrom(credential.data).idToken
+                firebaseSession = FirebaseAuthClient.authenticateWithGoogle(firebaseWebApiKey, googleIdToken)
+                authMessage = "Signed in with Google. Reports will be saved to your Firestore history."
+            } catch (error: Exception) {
+                authMessage = error.message ?: "Google sign-in failed. Check Firebase Android app setup."
             } finally {
                 isAuthenticating = false
             }
@@ -215,6 +259,17 @@ private fun NarrativeHome(onStartBubble: () -> Unit) {
                     shape = RoundedCornerShape(8.dp),
                 )
                 OutlinedTextField(
+                    value = googleWebClientId,
+                    onValueChange = {
+                        googleWebClientId = it
+                        preferences.edit().putString("google_web_client_id", it).apply()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Google Web OAuth client ID") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(8.dp),
+                )
+                OutlinedTextField(
                     value = clientToken,
                     onValueChange = {
                         clientToken = it
@@ -287,6 +342,13 @@ private fun NarrativeHome(onStartBubble: () -> Unit) {
                         ) {
                             Text("Create account")
                         }
+                    }
+                    OutlinedButton(
+                        onClick = { authenticateWithGoogle() },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isAuthenticating,
+                    ) {
+                        Text("Sign in with Google")
                     }
                 } else {
                     Text("Signed in as ${currentSession.email}", color = Ink, fontWeight = FontWeight.SemiBold)
